@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>엔트리 정밀 탐색기 (CORS 해결)</title>
+    <style>
+        :root { --main: #00c73c; --bg: #f8f9fa; }
+        body { font-family: 'Pretendard', sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
+        .app { width: 100%; max-width: 600px; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        .search-box { display: flex; gap: 8px; margin-bottom: 25px; }
+        input { flex: 1; padding: 14px; border: 2px solid #eee; border-radius: 10px; font-size: 16px; transition: 0.3s; }
+        input:focus { border-color: var(--main); outline: none; }
+        button { padding: 12px 20px; background: var(--main); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        
+        /* 정보 카드 */
+        #profile-card { display: none; border: 1px solid #eee; padding: 20px; border-radius: 12px; margin-top: 20px; background: #fff; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; border-top: 1px solid #eee; pt: 15px; }
+        .label { font-size: 12px; color: #888; display: block; margin-bottom: 4px; }
+        .value { font-size: 14px; font-weight: 600; color: #333; }
+        
+        .status-msg { font-size: 13px; color: #ff4d4f; margin-top: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <h2 style="margin-top:0; color:#333;">🔍 유저 정밀 탐색기</h2>
+    <p style="font-size:13px; color:#666;">팔로워 많은 유저의 상세 접속 기록을 확인하세요.</p>
+    
+    <div class="search-box">
+        <input type="text" id="userId" placeholder="엔트리 ID 입력 (예: kks0205)">
+        <button onclick="searchUser()">조회</button>
+    </div>
+
+    <div id="status" class="status-msg"></div>
+
+    <div id="profile-card">
+        <div style="display:flex; align-items:center; gap:15px;">
+            <img id="u-img" style="width:70px; height:70px; border-radius:50%; background:#eee;">
+            <div>
+                <h3 id="u-nickname" style="margin:0; font-size:20px;"></h3>
+                <span id="u-username" style="color:#aaa; font-size:14px;"></span>
+            </div>
+        </div>
+        
+        <div class="info-grid">
+            <div><span class="label">📅 계정 생성일</span><span id="u-created" class="value">-</span></div>
+            <div><span class="label">⏱️ 마지막 접속</span><span id="u-last" class="value">-</span></div>
+            <div><span class="label">👤 팔로워</span><span id="u-follower" class="value">0</span></div>
+            <div><span class="label">👥 팔로잉</span><span id="u-following" class="value">0</span></div>
+        </div>
+        
+        <div style="margin-top:15px; border-top:1px solid #eee; padding-top:15px;">
+            <span class="label">📝 자기소개</span>
+            <p id="u-bio" style="font-size:14px; line-height:1.5; color:#555; margin:5px 0;"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 공용 프록시 서버 사용 (CORS 해결용)
+    const PROXY_URL = "https://herokuapp.com";
+
+    async function searchUser() {
+        const id = document.getElementById('userId').value.trim();
+        const status = document.getElementById('status');
+        const card = document.getElementById('profile-card');
+        
+        if(!id) return;
+
+        status.innerText = "데이터를 가져오는 중...";
+        status.style.color = "#666";
+        card.style.display = 'none';
+
+        try {
+            // 프록시를 통해 엔트리 API 호출
+            const response = await fetch(`${PROXY_URL}https://playentry.org{id}`);
+            
+            if (response.status === 403) {
+                status.innerHTML = `⚠️ 프록시 권한이 필요합니다.<br><a href="https://herokuapp.comcorsdemo" target="_blank" style="color:#00c73c; font-weight:bold;">[여기 클릭]</a> 후 'Request access' 버튼을 눌러주세요.`;
+                return;
+            }
+
+            if (!response.ok) throw new Error();
+            const data = await response.json();
+
+            // 데이터 채우기
+            document.getElementById('u-nickname').innerText = data.nickname;
+            document.getElementById('u-username').innerText = `@${data.username}`;
+            document.getElementById('u-follower').innerText = data.followerCount.toLocaleString();
+            document.getElementById('u-following').innerText = data.followingCount.toLocaleString();
+            document.getElementById('u-bio').innerText = data.description || "소개글이 없습니다.";
+            
+            // 정밀 시간 정보 (마지막 로그인 포함)
+            document.getElementById('u-created').innerText = new Date(data.created).toLocaleDateString('ko-KR', {year:'numeric', month:'long', day:'numeric'});
+            document.getElementById('u-last').innerText = data.lastLogin ? new Date(data.lastLogin).toLocaleString() : "정보 없음";
+
+            // 프로필 이미지 경로 생성
+            const img = data.image;
+            document.getElementById('u-img').src = img ? `https://playentry.org{img.substring(0,2)}/${img.substring(2,4)}/image/${img}.png` : 'https://playentry.org';
+
+            status.innerText = "";
+            card.style.display = 'block';
+        } catch (err) {
+            status.innerText = "❌ 존재하지 않는 아이디이거나 오류가 발생했습니다.";
+            status.style.color = "#ff4d4f";
+        }
+    }
+</script>
+</body>
+</html>
