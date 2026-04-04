@@ -2,88 +2,104 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Entry Perfect Searcher</title>
+    <title>Entry Ultra Scanner</title>
     <style>
-        :root { --main: #00c73c; --bg: #f8f9fa; }
-        body { font-family: sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 450px; text-align: center; }
-        input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #ddd; box-sizing: border-box; }
-        button { background: var(--main); color: white; border: none; font-weight: bold; cursor: pointer; }
-        .status { font-size: 0.85rem; color: #666; margin: 10px 0; }
-        .result-grid { display: grid; grid-template-columns: 1fr; gap: 10px; width: 100%; max-width: 450px; margin-top: 20px; }
-        .user-card { background: white; padding: 15px; border-radius: 12px; display: flex; align-items: center; gap: 15px; border: 2px solid #eee; cursor: pointer; }
-        .user-card img { width: 50px; height: 50px; border-radius: 50%; }
-        .user-info { text-align: left; }
-        .user-info b { display: block; font-size: 1rem; }
-        .user-info span { font-size: 0.8rem; color: #888; }
+        :root { --main: #00c73c; --bg: #f4f7f6; }
+        body { font-family: 'Pretendard', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 500px; text-align: center; position: sticky; top: 10px; z-index: 10; }
+        input { width: 100%; padding: 15px; border: 2px solid #eee; border-radius: 10px; font-size: 1rem; outline: none; transition: 0.3s; box-sizing: border-box; }
+        input:focus { border-color: var(--main); }
+        button { width: 100%; padding: 15px; margin-top: 10px; background: var(--main); color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 1rem; }
+        .status { margin: 15px 0; font-size: 0.85rem; color: #666; font-weight: bold; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 500px; margin-top: 20px; }
+        .user-item { background: white; padding: 12px; border-radius: 12px; display: flex; align-items: center; gap: 10px; border: 1px solid #efefef; cursor: pointer; transition: 0.2s; }
+        .user-item:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-color: var(--main); }
+        .user-item img { width: 40px; height: 40px; border-radius: 50%; background: #eee; }
+        .user-item div { overflow: hidden; text-align: left; }
+        .user-item b { display: block; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-item span { font-size: 0.7rem; color: #999; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h3>🔍 정밀 유저 검색 (오류 해결판)</h3>
-    <p style="font-size:0.8rem; color:#666;">팔로우했는데 안 나온다면 닉네임 <b>대소문자</b>를 확인하세요!</p>
-    <input type="text" id="target" placeholder="검색할 정확한 닉네임 입력">
-    <button onclick="perfectSearch()">실시간 데이터 강제 조회</button>
-    <div id="status" class="status">대기 중...</div>
+    <h2>⚡ 엔트리 통합 유저 검색기</h2>
+    <input type="text" id="target" placeholder="검색할 닉네임 입력 (예: 180러)" onkeypress="if(event.keyCode==13) ultraScan()">
+    <button onclick="ultraScan()">수만 명 광속 스캔 시작</button>
+    <div id="status" class="status">검색어를 입력하고 시작하세요.</div>
 </div>
 
-<div id="results" class="result-grid"></div>
+<div id="results" class="grid"></div>
 
 <script>
-    async function perfectSearch() {
-        const name = document.getElementById('target').value.trim();
+    // 검색 대상 유명인/봇 ID 리스트 (180러, 게르맨, 무지개워러, 엔트리프렌즈, 팔로우봇 등)
+    const TARGETS = [
+        "60238127027dd00326433cac", // 180러
+        "56459146059c36353d68305c", // 엔트리프렌즈
+        "60ae3cd4827dd00326433cac", // 게르맨
+        "6925484ee7eba32d80e3f45f", // 무지개워러
+        "60f68cf316052f0eeaf9dded", // 팔로우봇1
+        "5e0d6e2468305c5645914605"  // 탐험하기 등록유저
+    ];
+
+    async function fetchPage(targetId, page, keyword) {
+        try {
+            // CORS 우회 및 캐시 방지
+            const api = `https://playentry.org{targetId}/followers?page=${page}&perPage=50`;
+            const proxy = `https://allorigins.win{encodeURIComponent(api)}&_=${Date.now()}`;
+            const res = await fetch(proxy);
+            const data = JSON.parse((await res.json()).contents);
+            return data.list ? data.list.filter(u => u.nickname.includes(keyword)) : [];
+        } catch { return []; }
+    }
+
+    async function ultraScan() {
+        const kw = document.getElementById('target').value.trim();
         const status = document.getElementById('status');
-        const results = document.getElementById('results');
+        const resultsDiv = document.getElementById('results');
 
-        if(!name) return;
-        results.innerHTML = '';
-        status.innerText = "🚀 여러 프록시 서버를 통해 데이터를 찾는 중...";
+        if(!kw) return alert("검색어를 입력하세요!");
 
-        // 1. 직접 유저명으로 검색 시도 (대소문자 일치 필수)
-        const api = `https://playentry.org{encodeURIComponent(name)}`;
-        
-        // 프록시 서버 목록 (allorigins, corsproxy 등)
-        const proxyUrls = [
-            `https://allorigins.win{encodeURIComponent(api)}&_=${Date.now()}`,
-            `https://codetabs.com{encodeURIComponent(api)}`
-        ];
+        resultsDiv.innerHTML = '';
+        status.innerText = "🚀 수만 명의 인맥 데이터 동시 분석 중...";
 
-        let userData = null;
+        const allPromises = [];
+        // 각 타겟마다 상위 20페이지씩(총 120개 요청) 동시에 전송
+        TARGETS.forEach(id => {
+            for(let p = 1; p <= 20; p++) {
+                allPromises.push(fetchPage(id, p, kw));
+            }
+        });
 
-        for (let url of proxyUrls) {
-            try {
-                const res = await fetch(url);
-                const text = await res.text();
-                const json = text.includes('"contents":') ? JSON.parse(JSON.parse(text).contents) : JSON.parse(text);
-                
-                if (json && json._id) {
-                    userData = json;
-                    break;
-                }
-            } catch (e) { console.warn("Proxy failed, trying next..."); }
-        }
+        // 병렬 처리로 속도 극대화
+        const results = await Promise.all(allPromises);
+        const merged = results.flat();
 
-        if (userData) {
-            status.innerText = "✅ 유저를 찾았습니다!";
-            const div = document.createElement('div');
-            div.className = 'user-card';
-            div.onclick = () => window.open(`https://playentry.org{userData._id}`);
-            
-            const pfp = userData.profileImg ? 
-                `https://playentry.org{userData.profileImg.substring(0,2)}/${userData.profileImg.substring(2,4)}/image/${userData.profileImg}` : 
-                'https://playentry.org';
+        // 중복 유저 제거 (여러 유명인을 동시에 팔로우한 경우)
+        const uniqueUsers = Array.from(new Map(merged.map(u => [u._id, u])).values());
 
-            div.innerHTML = `
-                <img src="${pfp}">
-                <div class="user-info">
-                    <b>${userData.nickname}</b>
-                    <span>팔로워: ${userData.followerCount} | 팔로잉: ${userData.followingCount}</span>
-                </div>
-            `;
-            results.appendChild(div);
+        if(uniqueUsers.length === 0) {
+            status.innerText = "❌ 검색 결과가 없습니다. 유명인 팔로워 목록에 없는 것 같아요.";
         } else {
-            status.innerHTML = "❌ 유저를 찾지 못했습니다.<br>1. 닉네임 <b>대소문자</b>가 정확한지 확인<br>2. 탈퇴한 계정인지 확인";
+            uniqueUsers.forEach(user => {
+                const div = document.createElement('div');
+                div.className = 'user-item';
+                div.onclick = () => window.open(`https://playentry.org{user._id}`);
+                
+                const img = user.profileImg ? 
+                    `https://playentry.org{user.profileImg.substring(0,2)}/${user.profileImg.substring(2,4)}/image/${user.profileImg}` : 
+                    'https://playentry.org';
+
+                div.innerHTML = `
+                    <img src="${img}">
+                    <div>
+                        <b>${user.nickname}</b>
+                        <span>@${user.username}</span>
+                    </div>
+                `;
+                resultsDiv.appendChild(div);
+            });
+            status.innerText = `✅ 탐색 완료! ${uniqueUsers.length}명을 찾았습니다.`;
         }
     }
 </script>
