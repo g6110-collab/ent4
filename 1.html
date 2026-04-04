@@ -2,81 +2,90 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Fast Entry Scanner</title>
+    <title>Entry Searcher Fix</title>
     <style>
-        :root { --main: #00c73c; --bg: #f1f3f5; }
+        :root { --main: #00c73c; --bg: #f8f9fa; }
         body { font-family: sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 450px; text-align: center; }
         input, button { width: 100%; padding: 12px; margin: 5px 0; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
         button { background: var(--main); color: white; border: none; font-weight: bold; cursor: pointer; }
-        .status { font-size: 0.85rem; color: #666; margin: 10px 0; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: 450px; margin-top: 15px; }
-        .item { background: white; padding: 8px; border-radius: 8px; display: flex; align-items: center; gap: 8px; border: 1px solid #eee; font-size: 0.8rem; cursor: pointer; }
-        .item img { width: 30px; height: 30px; border-radius: 50%; }
+        #status { font-size: 0.85rem; color: #666; margin: 10px 0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 450px; margin-top: 15px; }
+        .item { background: white; padding: 10px; border-radius: 10px; display: flex; align-items: center; gap: 10px; border: 1px solid #eee; cursor: pointer; }
+        .item img { width: 35px; height: 35px; border-radius: 50%; background: #eee; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h3>⚡ 초고속 인맥 검색기</h3>
-    <input type="text" id="kw" placeholder="찾을 닉네임 키워드 (예: 엔트리)">
-    <button onclick="fastScan()">4초 컷 도전! (병렬 검색)</button>
-    <div id="st" class="status">대기 중...</div>
+    <h3>✅ 오류 해결 유저 검색기</h3>
+    <p style="font-size:0.8rem; color:red;">검색이 안 되면 잠시 후 다시 눌러주세요.</p>
+    <input type="text" id="kw" placeholder="찾을 닉네임 입력">
+    <button onclick="safeScan()">초고속 스캔 시작</button>
+    <div id="status" class="status">대기 중...</div>
 </div>
 <div id="res" class="grid"></div>
 
 <script>
-    const CELEBS = [
-        "56459146059c36353d68305c", // 엔트리프렌즈
-        "60ae3cd4827dd00326433cac", // 게르맨
-        "6925484ee7eba32d80e3f45f", // 무지개워러
-        "60f68cf316052f0eeaf9dded"  // 팔로우봇
-    ];
+    const CELEBS = ["56459146059c36353d68305c", "60ae3cd4827dd00326433cac", "6925484ee7eba32d80e3f45f"];
 
-    async function fetchPage(celebId, page, keyword) {
-        try {
-            const url = `https://playentry.org{celebId}/followers?page=${page}&perPage=50`;
-            const proxy = `https://allorigins.win{encodeURIComponent(url)}`;
-            const res = await fetch(proxy);
-            const data = JSON.parse((await res.json()).contents);
-            return data.list.filter(u => u.nickname.includes(keyword));
-        } catch { return []; }
+    async function fetchWithRetry(url) {
+        // 프록시 서버를 바꿔가며 시도 (allorigins -> allorigins raw)
+        const proxies = [
+            `https://allorigins.win{encodeURIComponent(url)}`,
+            `https://allorigins.win{encodeURIComponent(url)}`
+        ];
+        
+        for (let proxy of proxies) {
+            try {
+                const res = await fetch(proxy + "&t=" + Date.now());
+                if (!res.ok) continue;
+                const text = await res.text();
+                // JSON 형태인지 일반 텍스트인지 판별하여 파싱
+                const data = text.startsWith('{') && text.includes('"contents":') ? JSON.parse(JSON.parse(text).contents) : JSON.parse(text);
+                return data.list || [];
+            } catch (e) { continue; }
+        }
+        return [];
     }
 
-    async function fastScan() {
+    async function safeScan() {
         const kw = document.getElementById('kw').value.trim();
-        const st = document.getElementById('st');
+        const status = document.getElementById('status');
         const resDiv = document.getElementById('res');
-        if(!kw) return;
+        if(!kw) return alert("닉네임을 입력하세요!");
 
         resDiv.innerHTML = '';
-        st.innerText = "🚀 초고속 병렬 탐색 시작...";
+        status.innerText = "🔍 데이터 불러오는 중... (CORS 우회 중)";
         
-        // 여러 유명인의 첫 1~10페이지를 '동시에' 요청 (총 40개 요청)
-        const promises = [];
+        // 1~5페이지 병렬 검색
+        const tasks = [];
         CELEBS.forEach(id => {
-            for(let p=1; p<=10; p++) {
-                promises.push(fetchPage(id, p, kw));
+            for(let p=1; p<=5; p++) {
+                tasks.push(fetchWithRetry(`https://playentry.org{id}/followers?page=${p}&perPage=50`));
             }
         });
 
-        const results = await Promise.all(promises);
-        const flatResults = results.flat();
+        const results = await Promise.all(tasks);
+        const allUsers = results.flat();
+        const matched = allUsers.filter(u => u.nickname.includes(kw));
 
-        // 중복 제거 (여러 군데 팔로우했을 수 있음)
-        const unique = Array.from(new Set(flatResults.map(u => u._id)))
-            .map(id => flatResults.find(u => u._id === id));
-
-        unique.forEach(user => {
-            const div = document.createElement('div');
-            div.className = 'item';
-            div.onclick = () => window.open(`https://playentry.org{user._id}`);
-            const img = user.profileImg ? `https://playentry.org{user.profileImg.substring(0,2)}/${user.profileImg.substring(2,4)}/image/${user.profileImg}` : 'https://playentry.org';
-            div.innerHTML = `<img src="${img}"><span>${user.nickname}</span>`;
-            resDiv.appendChild(div);
-        });
-
-        st.innerText = `탐색 완료! ${unique.length}명 발견`;
+        // 중복 제거 및 출력
+        const final = Array.from(new Map(matched.map(u => [u._id, u])).values());
+        
+        if(final.length === 0) {
+            status.innerText = "❌ 검색 결과가 없습니다. (오타나 대소문자를 확인하세요)";
+        } else {
+            final.forEach(user => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                div.onclick = () => window.open(`https://playentry.org{user._id}`);
+                const img = user.profileImg ? `https://playentry.org{user.profileImg.substring(0,2)}/${user.profileImg.substring(2,4)}/image/${user.profileImg}` : 'https://playentry.org';
+                div.innerHTML = `<img src="${img}"><span>${user.nickname}</span>`;
+                resDiv.appendChild(div);
+            });
+            status.innerText = `✅ ${final.length}명을 찾았습니다!`;
+        }
     }
 </script>
 </body>
