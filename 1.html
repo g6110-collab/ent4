@@ -2,99 +2,109 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Entry Network Finder</title>
+    <title>Entry Full Scanner</title>
     <style>
-        :root { --main: #00c73c; --bg: #f5f6f7; }
+        :root { --main: #00c73c; --bg: #f8f9fa; }
         body { font-family: 'Pretendard', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 450px; text-align: center; }
-        select, input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #ddd; box-sizing: border-box; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 480px; text-align: center; position: sticky; top: 20px; z-index: 100; }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #ddd; box-sizing: border-box; }
         button { background: var(--main); color: white; border: none; font-weight: bold; cursor: pointer; }
-        .status { font-size: 0.85rem; color: #666; margin: 10px 0; min-height: 20px; }
-        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 450px; margin-top: 20px; }
-        .user-card { background: white; padding: 10px; border-radius: 12px; display: flex; align-items: center; gap: 10px; cursor: pointer; border: 1px solid #eee; transition: 0.2s; }
-        .user-card:hover { transform: translateY(-2px); border-color: var(--main); }
-        .user-card img { width: 40px; height: 40px; border-radius: 50%; background: #eee; }
-        .user-card span { font-size: 0.85rem; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .status-bar { font-size: 0.85rem; color: #444; margin: 10px 0; background: #e9ecef; padding: 8px; border-radius: 5px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 480px; margin-top: 20px; }
+        .item { background: white; padding: 10px; border-radius: 12px; display: flex; align-items: center; gap: 10px; cursor: pointer; border: 1px solid #eee; transition: 0.2s; }
+        .item:hover { border-color: var(--main); transform: scale(1.02); }
+        .item img { width: 35px; height: 35px; border-radius: 50%; background: #eee; }
+        .item span { font-size: 0.85rem; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .stop-btn { background: #ff4757; margin-top: 5px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🎯 유명인 인맥 검색기</h2>
-    <p style="font-size:0.8rem; color:#888;">유명인의 팔로워 목록에서 특정 유저를 찾아냅니다.</p>
-    
-    <select id="celebId">
-        <option value="56459146059c36353d68305c">엔트리프렌즈 (공식)</option>
+    <h3>🔍 팔로워 전수 조사 검색</h3>
+    <select id="celeb">
+        <option value="56459146059c36353d68305c">엔트리프렌즈 (약 4만 명)</option>
         <option value="60ae3cd4827dd00326433cac">꧁게르맨꧂</option>
         <option value="6925484ee7eba32d80e3f45f">무지개워러</option>
         <option value="60f68cf316052f0eeaf9dded">팔로우봇 (3대가대머리)</option>
     </select>
-
-    <input type="text" id="searchName" placeholder="찾을 닉네임 입력 (일부만 쳐도 됨)">
-    <button onclick="startDeepSearch()">팔로워 리스트에서 찾기</button>
-    
-    <div id="status" class="status"></div>
+    <input type="text" id="keyword" placeholder="찾을 닉네임 키워드 입력">
+    <button id="startBtn" onclick="runScan()">전체 페이지 스캔 시작</button>
+    <button id="stopBtn" class="stop-btn" onclick="stopScan()" style="display:none;">스캔 중지</button>
+    <div id="status" class="status-bar">대기 중...</div>
 </div>
 
-<div id="results" class="result-grid"></div>
+<div id="display" class="grid"></div>
 
 <script>
-    let stopSearch = false;
+    let isScanning = false;
+    let currentPage = 1;
 
-    async function startDeepSearch() {
-        const celebId = document.getElementById('celebId').value;
-        const targetName = document.getElementById('searchName').value.trim();
+    async function runScan() {
+        const celebId = document.getElementById('celeb').value;
+        const keyword = document.getElementById('keyword').value.trim();
         const status = document.getElementById('status');
-        const results = document.getElementById('results');
+        const display = document.getElementById('display');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
 
-        if (!targetName) return alert("찾을 닉네임을 입력하세요!");
+        if (!keyword) return alert("검색어를 입력하세요!");
 
-        results.innerHTML = '';
-        status.innerText = "데이터 스캔 중... (시간이 걸릴 수 있습니다)";
-        stopSearch = false;
+        isScanning = true;
+        currentPage = 1;
+        display.innerHTML = '';
+        startBtn.disabled = true;
+        stopBtn.style.display = 'block';
 
-        // 팔로워 목록을 페이지별로 탐색 (최대 10페이지까지 검색 - 조절 가능)
-        for (let page = 1; page <= 15; page++) {
-            if (stopSearch) break;
+        while (isScanning) {
+            status.innerText = `현재 ${currentPage}페이지 분석 중...`;
             
             try {
-                const api = `https://playentry.org{celebId}/followers?page=${page}&perPage=40`;
+                // API 호출 및 프록시 거치기
+                const api = `https://playentry.org{celebId}/followers?page=${currentPage}&perPage=50`;
                 const proxy = `https://allorigins.win{encodeURIComponent(api)}&_=${new Date().getTime()}`;
                 
-                const res = await fetch(proxy);
-                const json = await res.json();
-                const data = JSON.parse(json.contents);
+                const response = await fetch(proxy);
+                const result = await response.json();
+                const data = JSON.parse(result.contents);
 
+                // 리스트가 없으면 종료
                 if (!data.list || data.list.length === 0) {
-                    status.innerText = "탐색 완료!";
+                    status.innerText = `✅ 모든 페이지 스캔 완료! (총 ${currentPage-1}페이지)`;
+                    isScanning = false;
                     break;
                 }
 
-                status.innerText = `${page}페이지 스캔 중... (${data.list.length}명 확인)`;
-
-                const filtered = data.list.filter(user => user.nickname.includes(targetName));
-                
-                filtered.forEach(user => {
+                // 키워드 필터링 및 화면 표시
+                const matched = data.list.filter(u => u.nickname.includes(keyword));
+                matched.forEach(user => {
                     const div = document.createElement('div');
-                    div.className = 'user-card';
+                    div.className = 'item';
                     div.onclick = () => window.open(`https://playentry.org{user._id}`);
-                    
-                    const pfp = user.profileImg ? 
-                        `https://playentry.org{user.profileImg.substring(0,2)}/${user.profileImg.substring(2,4)}/image/${user.profileImg}` : 
-                        'https://playentry.org';
-
-                    div.innerHTML = `<img src="${pfp}"><span>${user.nickname}</span>`;
-                    results.appendChild(div);
+                    const imgPath = user.profileImg ? `https://playentry.org{user.profileImg.substring(0,2)}/${user.profileImg.substring(2,4)}/image/${user.profileImg}` : 'https://playentry.org';
+                    div.innerHTML = `<img src="${imgPath}"><span>${user.nickname}</span>`;
+                    display.appendChild(div);
                 });
+
+                currentPage++;
+                // 엔트리 서버 부하 방지 및 차단 회피를 위한 미세 지연 (0.1초)
+                await new Promise(resolve => setTimeout(resolve, 100));
 
             } catch (err) {
                 console.error(err);
-                status.innerText = "오류 발생! 잠시 후 다시 시도하세요.";
-                break;
+                status.innerText = "⚠️ 오류 발생 (프록시 서버 지연). 계속 시도 중...";
+                await new Promise(resolve => setTimeout(resolve, 2000)); // 에러 시 2초 대기 후 재시도
             }
         }
-        if(results.innerHTML === '') status.innerText = "찾는 유저가 목록에 없습니다.";
-        else status.innerText = "검색 완료!";
+
+        startBtn.disabled = false;
+        stopBtn.style.display = 'none';
+    }
+
+    function stopScan() {
+        isScanning = false;
+        document.getElementById('status').innerText = "⏹️ 사용자에 의해 중단됨.";
     }
 </script>
 
